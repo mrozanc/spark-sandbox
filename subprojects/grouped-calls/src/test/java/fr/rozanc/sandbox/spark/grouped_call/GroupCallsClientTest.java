@@ -10,7 +10,6 @@ import org.apache.spark.sql.types.DataTypes;
 import org.apache.spark.sql.types.Metadata;
 import org.apache.spark.sql.types.StructField;
 import org.apache.spark.sql.types.StructType;
-import org.apache.spark.storage.StorageLevel;
 import org.assertj.core.api.SoftAssertions;
 import org.junit.jupiter.api.Test;
 
@@ -42,12 +41,13 @@ class GroupCallsClientTest {
                 new StructField("call_id", DataTypes.LongType, true, Metadata.empty())
         });
 
+        final Integer maxElementsByCall = null;
         val nbPartitions = 100;
         val datasetSize = 100_000L;
         val dataPoolSize = 20000;
         val rand = new Random();
 
-        val client = new GroupCallsClient(new TestExternalService(), outputSchema, nbPartitions);
+        val client = new GroupCallsClient(new TestExternalService(), outputSchema, nbPartitions, maxElementsByCall);
 
         List<Row> inputData = LongStream.range(1, datasetSize).boxed()
                 .map((rowId) -> new GenericRowWithSchema(new Object[]{rowId, rand.nextInt(dataPoolSize)}, inputSchema))
