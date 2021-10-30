@@ -1,0 +1,7 @@
+# Project exclude paths
+/.gradle/
+/buildSrc/.gradle/
+/buildSrc/build/
+/subprojects/grouped-calls/build/
+/subprojects/grouped-calls/build/classes/java/main/
+/subprojects/grouped-calls/build/classes/java/test/

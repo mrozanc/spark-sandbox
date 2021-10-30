@@ -1,0 +1,31 @@
+[versions]
+
+# Plugins versions
+lombok-plugin = "6.2.0"
+
+# Dependencies versions
+assertj = "3.21.0"
+guava = "31.0.1-jre"
+junit-jupiter = "5.8.1"
+lombok = "1.18.22"
+spark = "2.4.8"
+
+[plugins]
+lombok = { id = "io.freefair.lombok", version.ref = "lombok-plugin" }
+
+[libraries]
+assertj-core = { module = "org.assertj:assertj-core", version.ref = "assertj" }
+
+guava = { module = "com.google.guava:guava", version.ref = "guava" }
+
+junit-jupiter = { module = "org.junit.jupiter:junit-jupiter", version.ref = "junit-jupiter" }
+junit-jupiter-bom = { module = "org.junit:junit-bom", version.ref = "junit-jupiter" }
+
+spark-catalyst = { module = "org.apache.spark:spark-catalyst_2.12", version.ref = "spark" }
+spark-core = { module = "org.apache.spark:spark-core_2.12", version.ref = "spark" }
+spark-mllib = { module = "org.apache.spark:spark-mllib_2.12", version.ref = "spark" }
+spark-sql = { module = "org.apache.spark:spark-sql_2.12", version.ref = "spark" }
+spark-streaming = { module = "org.apache.spark:spark-streaming_2.12", version.ref = "spark" }
+
+[bundles]
+spark-main = ["spark-core", "spark-sql", "spark-catalyst"]
