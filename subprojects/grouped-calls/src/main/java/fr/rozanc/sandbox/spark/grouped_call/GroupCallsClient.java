@@ -45,18 +45,25 @@ public class GroupCallsClient implements Serializable {
     }
 
     public Dataset<Row> enrichWithRemoteData(final Dataset<Row> dataset) {
-//        final StructType keySchema = new StructType(new StructField[]{
-//                new StructField("value", DataTypes.IntegerType, true, Metadata.empty()),
-//                new StructField("negative_value", DataTypes.IntegerType, true, Metadata.empty()),
-//                new StructField("call_id", DataTypes.LongType, true, Metadata.empty())
-//        });
-//
+        final StructType keySchema = new StructType(new StructField[]{
+                new StructField("value", DataTypes.IntegerType, true, Metadata.empty()),
+                new StructField("negative_value", DataTypes.IntegerType, true, Metadata.empty()),
+                new StructField("call_id", DataTypes.LongType, true, Metadata.empty())
+        });
+
 //        final Dataset<Row> keyDataset = dataset.select("value")
 //                .distinct()
 //                .repartition(nbPartitions)
 //                .mapPartitions((MapPartitionsFunction<Row, Row>) (rows -> callExternalService(rows, externalService, keySchema, maxElementsByCall)), RowEncoder.apply(keySchema));
 //
 //        return dataset.join(keyDataset, JavaConverters.asScalaBuffer(Collections.singletonList("value")).toSeq());
+
+//        final Dataset<Row> keyDataset = dataset.select("id", "value")
+//                .repartition(nbPartitions, functions.col("value"))
+//                .sortWithinPartitions(functions.col("value"))
+//                .mapPartitions((MapPartitionsFunction<Row, Row>) (rows -> callExternalService(rows, externalService, keySchema, maxElementsByCall)), RowEncoder.apply(keySchema));
+//
+//        return dataset.join(keyDataset, JavaConverters.asScalaBuffer(Arrays.asList("id", "value")).toSeq());
         return dataset
                 .repartition(nbPartitions, functions.col("value"))
                 .sortWithinPartitions(functions.col("value"))
@@ -76,11 +83,17 @@ public class GroupCallsClient implements Serializable {
         final Set<Integer> inputValues = new HashSet<>();
         final List<Row> bufferRows = new ArrayList<>(maxElementsByCall == 0 ? DEFAULT_BUFFER_ALLOCATION : maxElementsByCall);
         Row currentRow;
+        Integer previousValue = null;
         while (rows.hasNext()) {
             currentRow = rows.next();
-            bufferRows.add(currentRow);
-            inputValues.add(currentRow.getInt(currentRow.fieldIndex("value")));
-            if (inputValues.size() == maxElementsByCall || !rows.hasNext()) {
+            final int currentValue = currentRow.getInt(currentRow.fieldIndex("value"));
+            final boolean isNewValue = previousValue == null || currentValue != previousValue;
+            if (!isNewValue || inputValues.size() < maxElementsByCall) {
+                inputValues.add(currentValue);
+                bufferRows.add(currentRow);
+            }
+            final boolean currentIsOnNextBuffer = !inputValues.contains(currentValue);
+            if (inputValues.size() == maxElementsByCall && isNewValue && currentIsOnNextBuffer || !rows.hasNext()) {
                 final ExternalServiceResponse response = externalService.transformValue(new ArrayList<>(inputValues));
                 outputRows.addAll(
                         bufferRows.stream()
@@ -88,9 +101,21 @@ public class GroupCallsClient implements Serializable {
                                                                                           "call_id", response.getCallNumber())))
                                 .collect(Collectors.toList())
                 );
-                bufferRows.clear();
                 inputValues.clear();
+                bufferRows.clear();
+                inputValues.add(currentValue);
+                bufferRows.add(currentRow);
+                if (!rows.hasNext() && currentIsOnNextBuffer) { // Case of the last row if it was not added to the buffer
+                    final ExternalServiceResponse lastResponse = externalService.transformValue(new ArrayList<>(inputValues));
+                    outputRows.addAll(
+                            bufferRows.stream()
+                                    .map(row -> copyAndSet(row, outputSchema, ImmutableMap.of("negative_value", lastResponse.getTransformedValues().get(row.getInt(row.fieldIndex("value"))),
+                                                                                              "call_id", lastResponse.getCallNumber())))
+                                    .collect(Collectors.toList())
+                    );
+                }
             }
+            previousValue = currentValue;
         }
 
         return outputRows.iterator();
