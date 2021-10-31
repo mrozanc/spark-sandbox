@@ -2,11 +2,15 @@ package fr.rozanc.sandbox.spark.grouped_call;
 
 import com.google.common.collect.ImmutableMap;
 import org.apache.spark.api.java.function.MapPartitionsFunction;
+import org.apache.spark.sql.Column;
 import org.apache.spark.sql.Dataset;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.catalyst.encoders.RowEncoder;
 import org.apache.spark.sql.catalyst.expressions.GenericRowWithSchema;
 import org.apache.spark.sql.functions;
+import org.apache.spark.sql.types.DataTypes;
+import org.apache.spark.sql.types.Metadata;
+import org.apache.spark.sql.types.StructField;
 import org.apache.spark.sql.types.StructType;
 import scala.collection.JavaConverters;
 
@@ -30,7 +34,10 @@ public class GroupCallsClient implements Serializable {
     private final int nbPartitions;
     private final int maxElementsByCall;
 
-    public GroupCallsClient(final ExternalService externalService, final StructType outputSchema, final int nbPartitions, final int maxElementsByCall) {
+    public GroupCallsClient(final ExternalService externalService,
+                            final StructType outputSchema,
+                            final int nbPartitions,
+                            final int maxElementsByCall) {
         this.externalService = externalService;
         this.outputSchema = outputSchema;
         this.nbPartitions = nbPartitions;
@@ -38,10 +45,23 @@ public class GroupCallsClient implements Serializable {
     }
 
     public Dataset<Row> enrichWithRemoteData(final Dataset<Row> dataset) {
+//        final StructType keySchema = new StructType(new StructField[]{
+//                new StructField("value", DataTypes.IntegerType, true, Metadata.empty()),
+//                new StructField("negative_value", DataTypes.IntegerType, true, Metadata.empty()),
+//                new StructField("call_id", DataTypes.LongType, true, Metadata.empty())
+//        });
+//
+//        final Dataset<Row> keyDataset = dataset.select("value")
+//                .distinct()
+//                .repartition(nbPartitions)
+//                .mapPartitions((MapPartitionsFunction<Row, Row>) (rows -> callExternalService(rows, externalService, keySchema, maxElementsByCall)), RowEncoder.apply(keySchema));
+//
+//        return dataset.join(keyDataset, JavaConverters.asScalaBuffer(Collections.singletonList("value")).toSeq());
         return dataset
                 .repartition(nbPartitions, functions.col("value"))
                 .sortWithinPartitions(functions.col("value"))
                 .mapPartitions((MapPartitionsFunction<Row, Row>) (rows -> callExternalService(rows, externalService, outputSchema, maxElementsByCall)), RowEncoder.apply(outputSchema));
+
     }
 
     public static Iterator<Row> callExternalService(final Iterator<Row> rows,

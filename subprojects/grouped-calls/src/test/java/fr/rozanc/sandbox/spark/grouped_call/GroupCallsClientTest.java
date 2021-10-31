@@ -1,5 +1,6 @@
 package fr.rozanc.sandbox.spark.grouped_call;
 
+import lombok.SneakyThrows;
 import lombok.val;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.SparkSession;
@@ -32,7 +33,7 @@ class GroupCallsClientTest {
     @Test
     void testGroupedCalls() {
         val sparkSession = SparkSession.builder()
-                .master("local[6]")
+                .master("local[8]")
                 .getOrCreate();
 
         val inputSchema = new StructType(new StructField[]{
@@ -49,7 +50,7 @@ class GroupCallsClientTest {
 
         final int maxElementsByCall = 100;
         val nbPartitions = 100;
-        val datasetSize = 1_000_000L;
+        val datasetSize = 5_000_000L;
         val dataPoolSize = 20000;
         val rand = new Random();
 
@@ -66,6 +67,8 @@ class GroupCallsClientTest {
         final long numberOfUnprocessedRows = outputDataset
                 .filter((col("value").notEqual(lit(0).minus(col("negative_value")))))
                 .count();
+
+        System.out.println("number of calls: " + outputDataset.select("call_id").distinct().count());
 
         val softly = new SoftAssertions();
 
@@ -93,9 +96,12 @@ class GroupCallsClientTest {
 
         private static final AtomicLong callCount = new AtomicLong(0L);
 
+        @SneakyThrows
         @Override
         public ExternalServiceResponse transformValue(List<Integer> values) {
             final long callNumber = callCount.incrementAndGet();
+
+            Thread.sleep(1000L);
 
             if (values == null) {
                 return new ExternalServiceResponse(callNumber, Collections.emptyMap());

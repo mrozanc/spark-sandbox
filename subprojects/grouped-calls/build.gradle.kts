@@ -20,6 +20,7 @@ dependencies {
 
 tasks {
     named<Test>("test") {
+        jvmArgs("-Xms1g", "-Xmx8g")
         systemProperty("java.util.logging.manager", "org.apache.logging.log4j.jul.LogManager")
     }
 }
