@@ -7,10 +7,19 @@ lombok-plugin = "6.2.0"
 assertj = "3.21.0"
 guava = "31.0.1-jre"
 junit-jupiter = "5.8.1"
+kotest = "4.6.3"
+kotlin = "1.5.31"
+kotlinx-coroutines = "1.5.2"
+kotlinx-spark = "1.0.2"
+log4j2 = "2.14.1"
 lombok = "1.18.22"
-spark = "2.4.8"
+spark = "3.0.3"
+spark2 = "2.4.8"
 
 [plugins]
+kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
+kotlin-kapt = { id = "org.jetbrains.kotlin.kapt", version.ref = "kotlin" }
+
 lombok = { id = "io.freefair.lombok", version.ref = "lombok-plugin" }
 
 [libraries]
@@ -21,11 +30,44 @@ guava = { module = "com.google.guava:guava", version.ref = "guava" }
 junit-jupiter = { module = "org.junit.jupiter:junit-jupiter", version.ref = "junit-jupiter" }
 junit-jupiter-bom = { module = "org.junit:junit-bom", version.ref = "junit-jupiter" }
 
+kotest-assertions-core = { module = "io.kotest:kotest-assertions-core", version.ref = "kotest" }
+kotest-property = { module = "io.kotest:kotest-property", version.ref = "kotest" }
+kotest-runner-junit5 = { module = "io.kotest:kotest-runner-junit5", version.ref = "kotest" }
+
+kotlin-bom = { module = "org.jetbrains.kotlin:kotlin-bom", version.ref = "kotlin" }
+kotlin-reflect = { module = "org.jetbrains.kotlin:kotlin-reflect", version.ref = "kotlin" }
+kotlin-stdlib-main = { module = "org.jetbrains.kotlin:kotlin-stdlib", version.ref = "kotlin" }
+kotlin-stdlib-jdk7 = { module = "org.jetbrains.kotlin:kotlin-stdlib-jdk7", version.ref = "kotlin" }
+kotlin-stdlib-jdk8 = { module = "org.jetbrains.kotlin:kotlin-stdlib-jdk8", version.ref = "kotlin" }
+kotlin-test-main = { module = "org.jetbrains.kotlin:kotlin-test", version.ref = "kotlin" }
+kotlin-test-junit5 = { module = "org.jetbrains.kotlin:kotlin-test-junit5", version.ref = "kotlin" }
+
+kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "kotlinx-coroutines" }
+
+kotlinx-spark-api = { module = "org.jetbrains.kotlinx.spark:kotlin-spark-api-3.0", version.ref = "kotlinx-spark" }
+
+log4j2-api = { module = "org.apache.logging.log4j:log4j-api", version.ref = "log4j2" }
+log4j2-api12 = { module = "org.apache.logging.log4j:log4j-1.2-api", version.ref = "log4j2" }
+log4j2-core = { module = "org.apache.logging.log4j:log4j-core", version.ref = "log4j2" }
+log4j2-jcl = { module = "org.apache.logging.log4j:log4j-jcl", version.ref = "log4j2" }
+log4j2-jul = { module = "org.apache.logging.log4j:log4j-jul", version.ref = "log4j2" }
+log4j2-slf4j = { module = "org.apache.logging.log4j:log4j-slf4j-impl", version.ref = "log4j2" }
+
 spark-catalyst = { module = "org.apache.spark:spark-catalyst_2.12", version.ref = "spark" }
 spark-core = { module = "org.apache.spark:spark-core_2.12", version.ref = "spark" }
 spark-mllib = { module = "org.apache.spark:spark-mllib_2.12", version.ref = "spark" }
 spark-sql = { module = "org.apache.spark:spark-sql_2.12", version.ref = "spark" }
 spark-streaming = { module = "org.apache.spark:spark-streaming_2.12", version.ref = "spark" }
 
+spark2-catalyst = { module = "org.apache.spark:spark-catalyst_2.12", version.ref = "spark2" }
+spark2-core = { module = "org.apache.spark:spark-core_2.12", version.ref = "spark2" }
+spark2-mllib = { module = "org.apache.spark:spark-mllib_2.12", version.ref = "spark2" }
+spark2-sql = { module = "org.apache.spark:spark-sql_2.12", version.ref = "spark2" }
+spark2-streaming = { module = "org.apache.spark:spark-streaming_2.12", version.ref = "spark2" }
+
 [bundles]
+kotest = ["kotest-runner-junit5", "kotest-assertions-core", "kotest-property"]
+kotlin = ["kotlin-reflect", "kotlin-stdlib-jdk8", "kotlin-stdlib-jdk7", "kotlin-stdlib-main"]
+log4j2-runtime = ["log4j2-core", "log4j2-api12", "log4j2-jcl", "log4j2-jul", "log4j2-slf4j"]
 spark-main = ["spark-core", "spark-sql", "spark-catalyst"]
+spark2-main = ["spark2-core", "spark2-sql", "spark2-catalyst"]

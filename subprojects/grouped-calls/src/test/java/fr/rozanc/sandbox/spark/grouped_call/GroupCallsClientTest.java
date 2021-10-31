@@ -21,13 +21,19 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 import java.util.stream.LongStream;
 
-import static org.assertj.core.api.Assertions.assertThat;
+import static org.apache.spark.sql.functions.ceil;
+import static org.apache.spark.sql.functions.col;
+import static org.apache.spark.sql.functions.count;
+import static org.apache.spark.sql.functions.countDistinct;
+import static org.apache.spark.sql.functions.lit;
 
 class GroupCallsClientTest {
 
     @Test
     void testGroupedCalls() {
-        val sparkSession = SparkSession.builder().master("local[6]").getOrCreate();
+        val sparkSession = SparkSession.builder()
+                .master("local[6]")
+                .getOrCreate();
 
         val inputSchema = new StructType(new StructField[]{
                 new StructField("id", DataTypes.LongType, false, Metadata.empty()),
@@ -41,46 +47,44 @@ class GroupCallsClientTest {
                 new StructField("call_id", DataTypes.LongType, true, Metadata.empty())
         });
 
-        final Integer maxElementsByCall = null;
+        final int maxElementsByCall = 100;
         val nbPartitions = 100;
-        val datasetSize = 100_000L;
+        val datasetSize = 1_000_000L;
         val dataPoolSize = 20000;
         val rand = new Random();
 
         val client = new GroupCallsClient(new TestExternalService(), outputSchema, nbPartitions, maxElementsByCall);
 
-        List<Row> inputData = LongStream.range(1, datasetSize).boxed()
+        List<Row> inputData = LongStream.range(0, datasetSize).boxed()
                 .map((rowId) -> new GenericRowWithSchema(new Object[]{rowId, rand.nextInt(dataPoolSize)}, inputSchema))
                 .collect(Collectors.toList());
 
         val inputDataset = sparkSession.createDataset(inputData, RowEncoder.apply(inputSchema));
 
         val outputDataset = client.enrichWithRemoteData(inputDataset).persist();
-        val outputData = outputDataset.collectAsList();
+        final long numberOfOutputRows = outputDataset.count();
+        final long numberOfUnprocessedRows = outputDataset
+                .filter((col("value").notEqual(lit(0).minus(col("negative_value")))))
+                .count();
 
         val softly = new SoftAssertions();
 
-        softly.assertThat(outputData).allSatisfy((row) -> {
-            assertThat(row.getInt(row.fieldIndex("negative_value")))
-                    .as("#" + row.getLong(row.fieldIndex("id")) + " negative_value")
-                    .isEqualTo(-row.getInt(row.fieldIndex("value")));
-            assertThat(row.<Long>getAs("call_id")).isNotNull();
-        });
+        softly.assertThat(numberOfOutputRows).isEqualTo(datasetSize);
+        softly.assertThat(numberOfUnprocessedRows).isEqualTo(0L);
 
-        val dataGroupedByCallId = outputDataset.groupBy("call_id").agg(functions.countDistinct("id"), functions.countDistinct("value"))
-                .orderBy("call_id")
-                .collectAsList();
+        final long dataWithMoreCallsThanAllowed = outputDataset.groupBy("call_id").agg(countDistinct("id").as("distinct_ids"), countDistinct("value").as("distinct_values"))
+                .filter((lit(maxElementsByCall).notEqual(lit(0))).and(col("distinct_values").gt(lit(maxElementsByCall))))
+                .count();
 
-        softly.assertThat(dataGroupedByCallId).hasSizeLessThanOrEqualTo(nbPartitions);
+        softly.assertThat(dataWithMoreCallsThanAllowed).isEqualTo(0);
 
-        val dataGroupedByValue = outputDataset.groupBy("value").agg(functions.countDistinct("call_id"))
-                .collectAsList();
+        final long numberOfMultipleCallsByValue = outputDataset.groupBy("value").agg(countDistinct("call_id").as("distinct_call_ids"), count("id").as("nb_rows"))
+                .filter(col("distinct_call_ids").gt(ceil(col("nb_rows").divide(lit(maxElementsByCall)))))
+                .count();
 
         outputDataset.unpersist();
 
-        softly.assertThat(dataGroupedByValue).allSatisfy(row -> {
-            assertThat(row.getLong(row.fieldIndex("count(DISTINCT call_id)"))).isEqualTo(1L);
-        });
+        softly.assertThat(numberOfMultipleCallsByValue).isEqualTo(0);
 
         softly.assertAll();
     }
@@ -91,13 +95,13 @@ class GroupCallsClientTest {
 
         @Override
         public ExternalServiceResponse transformValue(List<Integer> values) {
-            final long callNumer = callCount.incrementAndGet();
+            final long callNumber = callCount.incrementAndGet();
 
             if (values == null) {
-                return new ExternalServiceResponse(callNumer, Collections.emptyMap());
+                return new ExternalServiceResponse(callNumber, Collections.emptyMap());
             }
 
-            return new ExternalServiceResponse(callNumer, values.stream()
+            return new ExternalServiceResponse(callNumber, values.stream()
                     .map((value) -> new AbstractMap.SimpleEntry<>(value, -value))
                     .collect(Collectors.toMap(AbstractMap.SimpleEntry::getKey, AbstractMap.SimpleEntry::getValue)));
         }

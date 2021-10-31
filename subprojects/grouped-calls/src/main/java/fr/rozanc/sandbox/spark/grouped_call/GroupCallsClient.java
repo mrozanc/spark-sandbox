@@ -1,8 +1,6 @@
 package fr.rozanc.sandbox.spark.grouped_call;
 
 import com.google.common.collect.ImmutableMap;
-import com.google.common.collect.Lists;
-import lombok.Data;
 import org.apache.spark.api.java.function.MapPartitionsFunction;
 import org.apache.spark.sql.Dataset;
 import org.apache.spark.sql.Row;
@@ -12,7 +10,6 @@ import org.apache.spark.sql.functions;
 import org.apache.spark.sql.types.StructType;
 import scala.collection.JavaConverters;
 
-import javax.annotation.Nullable;
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -23,15 +20,17 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 public class GroupCallsClient implements Serializable {
 
+    private static final int DEFAULT_BUFFER_ALLOCATION = 250;
     private final ExternalService externalService;
     private final StructType outputSchema;
     private final int nbPartitions;
-    private final Integer maxElementsByCall;
+    private final int maxElementsByCall;
 
-    public GroupCallsClient(final ExternalService externalService, final StructType outputSchema, final int nbPartitions, @Nullable final Integer maxElementsByCall) {
+    public GroupCallsClient(final ExternalService externalService, final StructType outputSchema, final int nbPartitions, final int maxElementsByCall) {
         this.externalService = externalService;
         this.outputSchema = outputSchema;
         this.nbPartitions = nbPartitions;
@@ -41,48 +40,40 @@ public class GroupCallsClient implements Serializable {
     public Dataset<Row> enrichWithRemoteData(final Dataset<Row> dataset) {
         return dataset
                 .repartition(nbPartitions, functions.col("value"))
+                .sortWithinPartitions(functions.col("value"))
                 .mapPartitions((MapPartitionsFunction<Row, Row>) (rows -> callExternalService(rows, externalService, outputSchema, maxElementsByCall)), RowEncoder.apply(outputSchema));
     }
 
     public static Iterator<Row> callExternalService(final Iterator<Row> rows,
                                                     final ExternalService externalService,
                                                     final StructType outputSchema,
-                                                    final Integer maxElementsByCall) {
+                                                    final int maxElementsByCall) {
         if (rows == null || !rows.hasNext()) {
             return Collections.emptyIterator();
         }
 
+        final List<Row> outputRows = new ArrayList<>(maxElementsByCall == 0 ? DEFAULT_BUFFER_ALLOCATION : maxElementsByCall);
         final Set<Integer> inputValues = new HashSet<>();
-        final List<Row> outputRows = new ArrayList<>();
+        final List<Row> bufferRows = new ArrayList<>(maxElementsByCall == 0 ? DEFAULT_BUFFER_ALLOCATION : maxElementsByCall);
         Row currentRow;
         while (rows.hasNext()) {
             currentRow = rows.next();
-            outputRows.add(currentRow);
+            bufferRows.add(currentRow);
             inputValues.add(currentRow.getInt(currentRow.fieldIndex("value")));
+            if (inputValues.size() == maxElementsByCall || !rows.hasNext()) {
+                final ExternalServiceResponse response = externalService.transformValue(new ArrayList<>(inputValues));
+                outputRows.addAll(
+                        bufferRows.stream()
+                                .map(row -> copyAndSet(row, outputSchema, ImmutableMap.of("negative_value", response.getTransformedValues().get(row.getInt(row.fieldIndex("value"))),
+                                                                                          "call_id", response.getCallNumber())))
+                                .collect(Collectors.toList())
+                );
+                bufferRows.clear();
+                inputValues.clear();
+            }
         }
 
-        final List<List<Integer>> callsList;
-        if (maxElementsByCall == null) {
-            callsList = Collections.singletonList(new ArrayList<>(inputValues));
-        } else {
-            callsList = Lists.partition(new ArrayList<>(inputValues), maxElementsByCall);
-        }
-
-        final MergedExternalServiceResponse mergedResponses = callsList.stream()
-                .map(externalService::transformValue)
-                .collect(MergedExternalServiceResponse::new, (mr, r) -> {
-                    r.getTransformedValues().keySet().forEach(value -> mr.getValueToCallIdMap().put(value, r.getCallNumber()));
-                    mr.getValueToTransformedValueMap().putAll(r.getTransformedValues());
-                }, (mr1, mr2) -> {
-                    mr1.getValueToCallIdMap().putAll(mr2.getValueToCallIdMap());
-                    mr1.getValueToTransformedValueMap().putAll(mr2.getValueToTransformedValueMap());
-                });
-
-        return outputRows.stream()
-                .map(row -> copyAndSet(row, outputSchema,
-                                       ImmutableMap.of("negative_value", mergedResponses.getValueToTransformedValueMap().get(row.getInt(row.fieldIndex("value"))),
-                                                       "call_id", mergedResponses.getValueToCallIdMap().get(row.getInt(row.fieldIndex("value"))))))
-                .iterator();
+        return outputRows.iterator();
     }
 
     private static Row copyAndSet(final Row originalRow, final StructType outputSchema, final Map<String, Object> values) {
@@ -90,11 +81,5 @@ public class GroupCallsClient implements Serializable {
                 originalRow.getValuesMap(JavaConverters.asScalaBuffer(Arrays.asList(originalRow.schema().fieldNames())).toSeq())));
         originalData.putAll(values);
         return new GenericRowWithSchema(Arrays.stream(outputSchema.fieldNames()).map(originalData::get).toArray(), outputSchema);
-    }
-
-    @Data
-    private static class MergedExternalServiceResponse implements Serializable {
-        private Map<Integer, Long> valueToCallIdMap = new HashMap<>();
-        private Map<Integer, Integer> valueToTransformedValueMap = new HashMap<>();
     }
 }
